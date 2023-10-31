@@ -1,0 +1,78 @@
+# Trackpy requires installation through conda. Pip giving issues
+# code largely taken from the trackpy vingette
+!conda --version 
+!python --version
+
+import sys
+_ = (sys.path
+        .append("/usr/local/lib/python3.7/site-packages"))
+
+# load packages
+%matplotlib inline
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+mpl.rc('figure',  figsize=(10, 6))
+import numpy as np
+import pandas as pd
+from pandas import DataFrame, Series  # for convenience
+
+import pims
+import trackpy as tp
+
+import warnings
+warnings.filterwarnings("ignore", module="matplotlib")
+
+
+# load data  
+frames = pims.ImageSequenceND(r'/content/drive/MyDrive/data/tracking_nuclei/nuclei_segments.zip', axes_identifiers = ['z', 't'])
+frames.bundle_axes = ['z', 'y', 'x']
+frames.iter_axes = 't'
+frames
+
+# have a look at the data
+t_slice=frames[0]  #specific t slice (3D stack)
+t_slice_for_specific_z=t_slice[0] #specific t slice for a given z stack(2D)
+plt.imshow(t_slice_for_specific_z)
+
+# the dataset is previously segemented using stardise. so Trackpy can extract features here. If not, segment it here. 
+features = tp.locate(frames[0], diameter=(5, 9, 9))
+features.head()  # displays first 5 rows
+
+f = tp.batch(frames, diameter=(7, 11, 11), separation=(3, 11, 11))
+
+
+# locating features in all frames
+f = tp.batch(frames, diameter=(7, 11, 11), separation=(3, 11, 11))
+
+
+f['xum'] = f['x'] * 0.25
+f['yum'] = f['y'] * 0.25
+f['zum'] = f['z'] * 1.25
+
+
+# Link features into particle trajectories
+
+for search_range in [1.0, 1.5, 2.0, 2.5]:
+    linked = tp.link_df(f, search_range, pos_columns=['xum', 'yum', 'zum'])
+    hist, bins = np.histogram(np.bincount(linked.particle.astype(int)),
+                              bins=np.arange(30), normed=True)
+    plt.step(bins[1:], hist, label='range = {} microns'.format(search_range))
+plt.ylabel('relative frequency')
+plt.xlabel('track length (frames)')
+plt.legend()
+
+linked = tp.link_df(f, 2.0, pos_columns=['xum', 'yum', 'zum'])
+
+
+# calculating the mean squared displacements
+msd3D = tp.emsd(linked, mpp=1, fps=1/0.8582, max_lagtime=20,
+                pos_columns=['xum', 'yum', 'zum'])
+ax = msd3D.plot(style='o', label='MSD in 3D')
+ax.set_ylabel(r'r_squared')
+ax.set_xlabel('lag time ')
+ax.set_xlim(0, 20)
+ax.set_ylim(0, 20)
+
+
+# plot trajectories
+tp.plot_traj(linked, superimpose=frames) 
